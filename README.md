@@ -1,2 +1,2 @@
 # BigData-Course-CIDP
-cidp研究生大数据课程
+cidp-2022年春-研究生大数据课程

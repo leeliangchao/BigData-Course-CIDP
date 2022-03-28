@@ -1,0 +1,301 @@
+#Hadoop配置
+
+#༼ つ ◕_◕ ༽つ  🎉         🎈 (●ˇ∀ˇ●)
+
+#### SSH远程登录配置
+
+```shell
+# vi /etc/ssh/sshd_conf
+PermitEmptyPasswords  yes
+PasswordAuthentication  yes
+PermitRootLogin yes
+# 注释掉有个重复的 no
+
+[root] systemctl restart ssdh
+```
+
+#### 创建单独为hadoop工作的hadoop用户
+
+```shell
+[root] useradd hadoop
+[root] passwd hadoop
+```
+
+#### 安装java
+
+```shell
+yum install java-11-openjdk java-11-openjdk-devel
+
+# 在系统环境中配置java环境变量
+[root] vi /etc/profile
+export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.14.1.1-1.el7_9.x86_64
+export PATH=$PATH:$JAVA_HOME/bin
+
+[root] resource /et/profile
+```
+
+#### 规划服务器角色
+
+```shell
+bigdata100  namenode             datanode     （主节点、数据节点、namenode）
+bigdata99  Secondarynamenode     datanode     （备份主节点、数据节点）
+bigdata98  dn1                   datanode     （从节点、数据节点）
+```
+
+#### 域名解析:warning:
+
+```shell
+[root] vi /etc/hosts
+#!!!!!!!!!! 用192的域名，别用172的
+172.xxx.xxx.xxx		namenode	
+172.xxx.xxx.xxx		Secondarynamenode
+172.xxx.xxx.xxx		dn1
+```
+
+#### 分发密钥
+
+```shell
+# 生成密钥
+[root] ssh-keygen -t rsa
+[root] ssh-copy-id Secondarynamenode
+[root] ssh-copy-id dn1
+[root] ssh-copy-id namenode # 给自己一个密钥，后面用到
+```
+
+####配置Hadoop
+
+```shell
+# 安装wget和用wget下载hadoop
+[root]  yum install wget
+[root]	su hadoop
+[hadoop] cd
+[hadoop] wget https://archive.apache.org/dist/hadoop/common/hadoop-3.3.2/hadoop-3.3.2.tar.gz
+# 解压hadoop到~
+[hadoop] tar -xvf hadoop-3.3.2/hadoop-3.3.2.tar.gz
+# 创建data文件夹存数据
+[hadoop ~] mkdir data
+
+
+# hadoop命令存放在/home/hadoop/hadoop3.3.2/bin下
+# 把路径加入到hadoop环境变量中，以后不用写路径调命令
+# 用户的环境变量修改.bashrc即可
+[hadoop] cd
+[hadoop] vi .bashrc
+export HADOOP_HOME=/home/hadoop/hadoop-3.3.2
+export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+
+[hadoop] source .bashrc
+# 测试下
+[hadoop ~] hadoop version
+# 出现下面内容即成功
+#Hadoop 3.3.2
+#Source code repository git@github.com:apache/hadoop.git -r #0bcb014209e219273cb6fd4152df7df713cbac61
+#Compiled by chao on 2022-02-21T18:39Z
+#Compiled with protoc 3.7.1
+#From source with checksum 4b40fff8bb27201ba07b6fa5651217fb
+#This command was run using /home/hadoop/hadoop-#3.3.2/share/hadoop/common/hadoop-common-3.3.2.jar
+```
+
+### 编辑hadoop配置文件
+
+```shell
+# 位置 /home/hadoop/hadoop-3.3.2/etc/hadoop
+[hadoop] cd /home/hadoop/hadoop-3.3.2/etc/hadoop
+[hadoop] vi core-site.xml
+# 修改添加core-site.xml内容， 确保data文件夹已创建
+<configuration>
+        <property>
+                <name>fs.defaultFS</name>
+                <value>hdfs://namenode:9000</value>
+        </property>
+        <property>
+                <name>hadoop.tmp.dir</name>
+                <value>file:/home/hadoop/data/tmp</value>
+        </property>
+</configuration>
+
+
+[hadoop] vi hdfs-sit.xml
+# 修改添加hdfs-sit.xml内容， 确保data文件夹已创建
+<configuration>
+        <property>
+                <name>dfs.namenode.secondary.http-address</name>
+                <value>Secondarynamenode:50090</value>
+        </property>
+        <property>
+                <name>dfs.replication</name>
+                <value>3</value>
+        </property>
+        <property>
+                <name>dfs.namenode.name.dir</name>
+                <value>file:/home/hadoop/data/name</value>
+        </property>
+        <property>
+                <name>dfs.datanode.data.dir</name>
+                <value>file:/home/hadoop/data/data</value>
+        </property>
+<configuration>
+
+# 修改添加mapred-site.xml内容
+        <property>
+                <name>mapreduce.framework.name</name>
+                <value>yarn</value>
+        </property>
+        <property>
+                <name>mapreduce.jobhistory.address</name>
+                <value>namenode:10020</value>
+        </property>
+        <property>
+                <name>mapreduce.jobhistory.webapp.address</name>
+                <value>namenode:19888</value>
+        </property>
+# 修改添加yarn-site.xml内容
+        <property>
+                <name>yarn.resourcemanager.hostname</name>
+                <value>namenode</value>
+        </property>
+        <property>
+                <name>yarn.nodemanager.aux-services</name>
+                <value>mapreduce_shuffle</value>
+        </property>
+# 修改添加workers内容
+# 删除localhost
+    namenode
+    Secondarynamenode
+    dn1
+# 修改hadoop-env.sh
+export HADOOP_HOME=/home/hadoop/hadoop-3.3.2
+export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.14.1.1-1.el7_9.x86_64
+
+```
+
+#### 分发hadoop
+
+```shell
+[hadoop] scp -r hadoop-3.3.2 hadoop@Secordarynamenode:~/
+[hadoop] scp -r hadoop-3.3.2 hadoop@dn1:~/
+```
+
+#### 给本机一个ssh
+
+```shell
+[hadoop] ssh-copy-id namenode
+```
+
+#### 启动
+
+```shell
+hdfs namenode -format
+
+start-dfs.sh
+start-yarn.sh
+jps
+```
+
+#### 文件操作
+
+```shell
+hadoop fs -put [from] [target]
+hadoop fs -get
+hadoop fs -ls /
+```
+
+#### Web查看
+
+```shell
+[master ip]:9870
+```
+
+# ༼ つ ◕_◕ ༽つ   ➡出错多看logs！！！！！！ 
+# 配Hadoop配麻了！ :cry:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
